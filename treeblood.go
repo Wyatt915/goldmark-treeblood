@@ -67,12 +67,15 @@ var (
 func (n *mathInlineNode) Kind() ast.NodeKind {
 	return KindMathInline
 }
+
 func (n *mathBlockNode) Kind() ast.NodeKind {
 	return KindMathBlock
 }
+
 func (n *mathInlineNode) Dump(source []byte, level int) {
 	ast.DumpHelper(n, source, level, nil, nil)
 }
+
 func (n *mathBlockNode) Dump(source []byte, level int) {
 	ast.DumpHelper(n, source, level, nil, nil)
 }
@@ -112,12 +115,12 @@ func (p *texInlineRegionParser) Parse(parent ast.Node, block text.Reader, _ pars
 			return nil
 		}
 	}
-	//fmt.Println(string(line))
+	// fmt.Println(string(line))
 	start := seg.Start + len(begin)
 	stop := bytes.Index(line[len(begin):], end)
 	if stop < 0 {
-		//could be a linebreak due to formatting issues
-		//count := 0
+		// could be a linebreak due to formatting issues
+		// count := 0
 		posLine, posSeg := block.Position()
 		block.AdvanceLine()
 		line, seg = block.PeekLine()
@@ -127,8 +130,8 @@ func (p *texInlineRegionParser) Parse(parent ast.Node, block text.Reader, _ pars
 			return nil
 		}
 	} else {
-		//there was no linebreak, so we need to account for the slice we took
-		//in the original definition of stop.
+		// there was no linebreak, so we need to account for the slice we took
+		// in the original definition of stop.
 		stop += len(begin)
 	}
 	seg = text.NewSegment(start, seg.Start+stop)
@@ -148,10 +151,12 @@ type mathBlockData struct {
 func (p *texBlockRegionParser) Trigger() []byte {
 	return []byte{'\\', '$'}
 }
+
 func (p *texBlockRegionParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	if _, ok := parent.(*mathInlineNode); ok {
 		return nil, parser.NoChildren
 	}
+
 	line, _ := reader.PeekLine()
 	displaystyle := false
 	var flavor int
@@ -166,41 +171,43 @@ func (p *texBlockRegionParser) Open(parent ast.Node, reader text.Reader, pc pars
 	} else if bytes.HasPrefix(line, _dollarInline) {
 		flavor = flavor_inline | delimeter_tex
 	}
-	// Check for DisplayStyle first since '$$' is a longer delimiter than '$'
+
 	if displaystyle {
-		// If the closing delimiter is on the same line THEN THIS IS NOT A BLOCK. IT IS INLINE!!!!
-		if flavor&delimeter_ams > 0 && bytes.Contains(line, _displayclose) {
-			return nil, parser.NoChildren
-		}
-		if flavor&delimeter_tex > 0 && bytes.Contains(line[2:], _dollarDisplay) {
-			return nil, parser.NoChildren
-		}
-		pc.Set(mathBlockInfoKey, mathBlockData{flavor: flavor})
-		//
-		//
-		// TODO: Move past $$ delimeters
-		//
-		//
-		//reader.Advance(2) // move reader past this line
-		return &mathBlockNode{flavor: flavor}, parser.NoChildren
-	} else {
-		// If the closing delimiter is on the same line THEN THIS IS NOT A BLOCK. IT IS INLINE!!!!
 		if flavor&delimeter_ams > 0 {
-			if bytes.Contains(line, _inlineclose) {
+			if bytes.Contains(line, _displayclose) {
 				return nil, parser.NoChildren
 			}
-			reader.Advance(len(_inlineopen)) // move reader past this line
-		} else if flavor&delimeter_tex > 0 {
-			if bytes.Contains(line[1:], _dollarInline) {
+			reader.Advance(len(_displayclose))
+		}
+		if flavor&delimeter_tex > 0 {
+			if bytes.Contains(line[2:], _dollarDisplay) {
 				return nil, parser.NoChildren
 			}
-			reader.Advance(len(_dollarInline)) // move reader past this line
+			reader.Advance(len(_dollarDisplay))
 		}
 		pc.Set(mathBlockInfoKey, mathBlockData{flavor: flavor})
-		return &mathBlockNode{flavor: flavor}, parser.NoChildren
+		node := &mathBlockNode{flavor: flavor}
+		_, seg := reader.PeekLine()
+		node.Lines().Append(seg)
+		return node, parser.NoChildren
 	}
-	return nil, parser.NoChildren
+
+	// If the closing delimiter is on the same line THEN THIS IS NOT A BLOCK. IT IS INLINE!!!!
+	if flavor&delimeter_ams > 0 {
+		if bytes.Contains(line, _inlineclose) {
+			return nil, parser.NoChildren
+		}
+		reader.Advance(len(_inlineopen)) // move reader past this line
+	} else if flavor&delimeter_tex > 0 {
+		if bytes.Contains(line[1:], _dollarInline) {
+			return nil, parser.NoChildren
+		}
+		reader.Advance(len(_dollarInline)) // move reader past this line
+	}
+	pc.Set(mathBlockInfoKey, mathBlockData{flavor: flavor})
+	return &mathBlockNode{flavor: flavor}, parser.NoChildren
 }
+
 func (p *texBlockRegionParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
 	line, seg := reader.PeekLine()
 	key := pc.Get(mathBlockInfoKey)
@@ -222,12 +229,11 @@ func (p *texBlockRegionParser) Continue(node ast.Node, reader text.Reader, pc pa
 		closeTag = _dollarDisplay
 	}
 	if stop := bytes.Index(line, closeTag); stop > -1 {
-		//node.Lines().Append(text.NewSegment(seg.Start, seg.Start+stop))
+		node.Lines().Append(text.NewSegment(seg.Start, seg.Start+stop))
 		reader.Advance(stop + len(closeTag)) // move reader past closing tag
 		return parser.Close | parser.NoChildren
 	}
 	node.Lines().Append(seg)
-	//reader.AdvanceLine()
 	return parser.Continue | parser.NoChildren
 }
 
