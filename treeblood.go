@@ -109,7 +109,7 @@ func (p *texInlineRegionParser) Parse(parent ast.Node, block text.Reader, _ pars
 		block.AdvanceLine()
 		nextLine, _ := block.PeekLine()
 		block.SetPosition(posLine, posSeg)
-		if nextLine == nil || bytes.Index(nextLine, end) < 0 {
+		if nextLine == nil || !bytes.Contains(nextLine, end) {
 			// No closing delimiter → not math
 			return nil
 		}
@@ -133,7 +133,7 @@ func (p *texInlineRegionParser) Parse(parent ast.Node, block text.Reader, _ pars
 	tex := string(block.Value(texSeg))
 
 	// Advance past the math region
-	block.Advance(stop - seg.Start + len(end))
+	block.Advance(stop + len(end))
 
 	return &mathInlineNode{
 		tex:    tex,
