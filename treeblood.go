@@ -80,7 +80,7 @@ func (p *texInlineRegionParser) Trigger() []byte {
 }
 
 func (p *texInlineRegionParser) Parse(parent ast.Node, block text.Reader, _ parser.Context) ast.Node {
-	line, seg := block.PeekLine()
+	line, _ := block.PeekLine()
 
 	var begin, end []byte
 	var flavor int
@@ -90,11 +90,11 @@ func (p *texInlineRegionParser) Parse(parent ast.Node, block text.Reader, _ pars
 		begin, end = _inlineopen, _inlineclose
 		flavor = flavor_inline | delimeter_ams
 
-	case bytes.HasPrefix(line, _dollarInline):
+	case bytes.HasPrefix(line, _dollarDisplay):
 		// Display math belongs to the block parser.
-		if bytes.HasPrefix(line, _dollarDisplay) {
-			return nil
-		}
+		return nil
+
+	case bytes.HasPrefix(line, _dollarInline):
 		begin, end = _dollarInline, _dollarInline
 		flavor = flavor_inline | delimeter_tex
 
@@ -103,19 +103,19 @@ func (p *texInlineRegionParser) Parse(parent ast.Node, block text.Reader, _ pars
 		return nil
 	}
 
-	// Inline math must close on the same line.
-	stop := bytes.Index(line[len(begin):], end)
+	// Search for the closing delimiter after the opener.
+	content := line[len(begin):]
+	stop := bytes.Index(content, end)
+
 	if stop < 0 {
 		return nil
 	}
 
-	start := seg.Start + len(begin)
-	stop += len(begin)
+	tex := string(content[:stop])
 
-	texSeg := text.NewSegment(start, seg.Start+stop)
-	tex := string(block.Value(texSeg))
-
-	block.Advance(stop + len(end))
+	// Consume opener, contents, and closing delimiter.
+	consumed := len(begin) + stop + len(end)
+	block.Advance(consumed)
 
 	return &mathInlineNode{
 		tex:    tex,
